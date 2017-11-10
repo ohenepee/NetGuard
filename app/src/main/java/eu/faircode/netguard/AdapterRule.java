@@ -120,13 +120,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         public TextView tvUid;
         public TextView tvPackage;
         public TextView tvVersion;
-        public TextView tvDescription;
         public TextView tvInternet;
         public TextView tvDisabled;
 
         public Button btnRelated;
         public ImageButton ibSettings;
-        public ImageButton ibDatasaver;
         public ImageButton ibLaunch;
 
         public CheckBox cbApply;
@@ -181,13 +179,11 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
             tvUid = itemView.findViewById(R.id.tvUid);
             tvPackage = itemView.findViewById(R.id.tvPackage);
             tvVersion = itemView.findViewById(R.id.tvVersion);
-            tvDescription = itemView.findViewById(R.id.tvDescription);
             tvInternet = itemView.findViewById(R.id.tvInternet);
             tvDisabled = itemView.findViewById(R.id.tvDisabled);
 
             btnRelated = itemView.findViewById(R.id.btnRelated);
             ibSettings = itemView.findViewById(R.id.ibSettings);
-            ibDatasaver = itemView.findViewById(R.id.ibDatasaver);
             ibLaunch = itemView.findViewById(R.id.ibLaunch);
 
             cbApply = itemView.findViewById(R.id.cbApply);
@@ -437,8 +433,6 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         holder.tvUid.setText(Integer.toString(rule.uid));
         holder.tvPackage.setText(rule.packageName);
         holder.tvVersion.setText(rule.version);
-        holder.tvDescription.setVisibility(rule.description == null ? View.GONE : View.VISIBLE);
-        holder.tvDescription.setText(rule.description);
 
         // Show application state
         holder.tvInternet.setVisibility(rule.internet ? View.GONE : View.VISIBLE);
@@ -457,49 +451,25 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         });
 
         // Launch application settings
-        holder.ibSettings.setVisibility(rule.settings == null ? View.GONE : View.VISIBLE);
         holder.ibSettings.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                context.startActivity(rule.settings);
-            }
-        });
-
-        // Data saver
-        holder.ibDatasaver.setVisibility(rule.datasaver == null ? View.GONE : View.VISIBLE);
-        holder.ibDatasaver.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                context.startActivity(rule.datasaver);
+                Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + rule.packageName));
+                if (intent.resolveActivity(context.getPackageManager()) != null)
+                    context.startActivity(intent);
             }
         });
 
         // Launch application
-        holder.ibLaunch.setVisibility(View.GONE);
-        holder.ibLaunch.setHasTransientState(true);
-        new AsyncTask<Rule, Object, Intent>() {
+        holder.ibLaunch.setOnClickListener(new View.OnClickListener() {
             @Override
-            protected Intent doInBackground(Rule... rule) {
-                try {
-                    return context.getPackageManager().getLaunchIntentForPackage(rule[0].packageName);
-                } catch (Throwable ex) {
-                    Log.e(TAG, ex.toString() + "\n" + Log.getStackTraceString(ex));
-                    return null;
-                }
+            public void onClick(View view) {
+                Intent intent = context.getPackageManager().getLaunchIntentForPackage(rule.packageName);
+                if (intent != null && intent.resolveActivity(context.getPackageManager()) != null)
+                    context.startActivity(intent);
             }
-
-            @Override
-            protected void onPostExecute(final Intent intent) {
-                holder.ibLaunch.setHasTransientState(false);
-                holder.ibLaunch.setVisibility(intent == null ? View.GONE : View.VISIBLE);
-                holder.ibLaunch.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        context.startActivity(intent);
-                    }
-                });
-            }
-        }.execute(rule);
+        });
 
         // Apply
         holder.cbApply.setEnabled(rule.pkg);
@@ -1022,7 +992,13 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
         public IconLoader(ViewHolder holder, Rule rule) {
             this.holder = holder;
             this.rule = rule;
+
             holder.ivIcon.setHasTransientState(true);
+            holder.ibSettings.setHasTransientState(true);
+            holder.ibLaunch.setHasTransientState(true);
+
+            holder.ibSettings.setVisibility(View.GONE);
+            holder.ibLaunch.setVisibility(View.GONE);
         }
 
         public void cancel() {
@@ -1037,7 +1013,9 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
                 if (cancelled)
                     throw new InterruptedException();
 
-                Drawable drawable = context.getPackageManager().getApplicationIcon(rule.packageName);
+                PackageManager pm = context.getPackageManager();
+
+                Drawable drawable = pm.getApplicationIcon(rule.packageName);
                 final Drawable scaledDrawable;
                 if (drawable instanceof BitmapDrawable) {
                     Bitmap original = ((BitmapDrawable) drawable).getBitmap();
@@ -1046,11 +1024,23 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
                 } else
                     scaledDrawable = drawable;
 
+                Intent l = pm.getLaunchIntentForPackage(rule.packageName);
+                final Intent launch = (l == null || l.resolveActivity(pm) == null ? null : l);
+
+                Intent s = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                s.setData(Uri.parse("package:" + rule.packageName));
+                final Intent settings = (s.resolveActivity(pm) == null ? null : s);
+
                 new Handler(context.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
                         holder.ivIcon.setImageDrawable(scaledDrawable);
+                        holder.ibSettings.setVisibility(settings == null ? View.GONE : View.VISIBLE);
+                        holder.ibLaunch.setVisibility(launch == null ? View.GONE : View.VISIBLE);
+
                         holder.ivIcon.setHasTransientState(false);
+                        holder.ibSettings.setHasTransientState(false);
+                        holder.ibLaunch.setHasTransientState(false);
                     }
                 });
             } catch (Throwable ex) {
@@ -1059,7 +1049,12 @@ public class AdapterRule extends RecyclerView.Adapter<AdapterRule.ViewHolder> im
                     @Override
                     public void run() {
                         holder.ivIcon.setImageDrawable(null);
+                        holder.ibSettings.setVisibility(View.GONE);
+                        holder.ibLaunch.setVisibility(View.GONE);
+
                         holder.ivIcon.setHasTransientState(false);
+                        holder.ibSettings.setHasTransientState(false);
+                        holder.ibLaunch.setHasTransientState(false);
                     }
                 });
             }
